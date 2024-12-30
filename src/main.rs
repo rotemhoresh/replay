@@ -15,6 +15,15 @@ const HAY_TITLE: &str = "TEST STRING: ";
 
 const LEFT_PADDING: u16 = max(RE_TITLE.len(), HAY_TITLE.len()) as u16;
 
+const LAYER_COLORS: [style::Color; 6] = [
+    style::Color::DarkGrey, // marks the main match itself
+    style::Color::DarkGreen,
+    style::Color::DarkYellow,
+    style::Color::DarkBlue,
+    style::Color::DarkMagenta,
+    style::Color::DarkCyan,
+];
+
 const fn max(a: usize, b: usize) -> usize {
     [a, b][(a < b) as usize]
 }
@@ -60,98 +69,59 @@ impl Input {
         };
     }
 
-    pub fn get(&self) -> &str {
-        match self.typ {
-            Type::Re => &self.re,
-            Type::Hay => &self.hay,
-        }
-    }
-
     pub fn re(&self) -> &str {
         &self.re
-    }
-
-    pub fn hay(&self) -> &str {
-        &self.hay
     }
 
     pub fn print_result<W>(&self, w: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
-        let re = if let Ok(re) = Regex::new(&self.re) {
-            re
-        } else {
-            return execute!(
-                w,
-                style::SetBackgroundColor(style::Color::DarkRed),
-                style::Print("ERROR"),
-                style::SetBackgroundColor(style::Color::Reset),
-            );
+        let re = match Regex::new(&self.re) {
+            Ok(re) => re,
+            Err(err) => {
+                execute!(
+                    w,
+                    style::SetBackgroundColor(style::Color::DarkRed),
+                    style::Print("ERROR:"),
+                    style::SetBackgroundColor(style::Color::Reset),
+                )?;
+                for (i, line) in err.to_string().lines().enumerate() {
+                    execute!(
+                        w,
+                        cursor::MoveTo(LEFT_PADDING, LINES_BETWEEN + 1 + i as u16),
+                        style::Print(line),
+                    )?;
+                }
+                return Ok(());
+            }
         };
         let caps = re.captures_iter(&self.hay);
 
-        let mut last_cap = 0;
+        execute!(w, style::Print(&self.hay))?;
 
         for cap in caps {
-            let c = cap.get(0).unwrap(); // this cannot return None
-            let start = c.start();
-            let end = c.end();
-            let mut last_mat = start;
+            let mut layers: Vec<usize> = Vec::new();
 
-            execute!(w, style::Print(&self.hay[last_cap..start]))?;
-
-            for mat in cap.iter().flatten().skip(1) {
+            for mat in cap.iter().flatten() {
                 let start = mat.start();
                 let end = mat.end();
 
+                while layers.last().is_some_and(|l| *l <= start) {
+                    layers.pop();
+                }
+                layers.push(end);
+
                 execute!(
                     w,
-                    style::SetBackgroundColor(style::Color::DarkGrey),
-                    style::Print(&self.hay[last_mat..start]),
-                    style::SetBackgroundColor(style::Color::DarkGreen),
+                    cursor::MoveTo(LEFT_PADDING + start as u16, LINES_BETWEEN),
+                    style::SetBackgroundColor(LAYER_COLORS[layers.len() - 1]),
                     style::Print(&self.hay[start..end]),
                     style::SetBackgroundColor(style::Color::Reset)
                 )?;
-
-                last_mat = end;
             }
-
-            if last_mat < end {
-                execute!(
-                    w,
-                    style::SetBackgroundColor(style::Color::DarkGrey),
-                    style::Print(&self.hay[last_mat..end]),
-                    style::SetBackgroundColor(style::Color::Reset)
-                )?;
-            }
-
-            last_cap = end;
         }
 
-        if last_cap < self.hay.len() {
-            execute!(w, style::Print(&self.hay[last_cap..]))?;
-        }
-
-        // match matches {
-        //     Ok(matches) => {
-        //         let mut last = 0;
-        //         for  in matches {
-        //             execute!(
-        //                 w,
-        //                 style::Print(&self.hay[last..start]),
-        //                 style::SetBackgroundColor(style::Color::DarkGreen),
-        //                 style::Print(&self.hay[start..end]),
-        //                 style::SetBackgroundColor(style::Color::Reset)
-        //             )?;
-        //             last = end;
-        //         }
-        //         if last != self.hay.len() {
-        //             execute!(w, style::Print(&self.hay[last..]))?;
-        //         }
-        //     }
-        //     Err(_) => execute!(w, style::Print("error"))?,
-        // };
         Ok(())
     }
 
@@ -179,7 +149,9 @@ fn main() -> io::Result<()> {
             cursor::MoveTo(0, 0),
             style::Print(RE_TITLE),
             cursor::MoveTo(LEFT_PADDING, 0),
+            style::SetBackgroundColor(style::Color::DarkGrey),
             style::Print(input.re()),
+            style::SetBackgroundColor(style::Color::Reset),
             cursor::MoveTo(0, LINES_BETWEEN),
             style::Print(HAY_TITLE),
             cursor::MoveTo(LEFT_PADDING, LINES_BETWEEN),
