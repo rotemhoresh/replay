@@ -69,11 +69,49 @@ impl Input {
         };
     }
 
-    pub fn re(&self) -> &str {
-        &self.re
+    pub fn print_re<W>(&self, w: &mut W) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        execute!(w, cursor::MoveTo(LEFT_PADDING, 0))?;
+
+        let mut layer = 0;
+
+        for ch in self.re.chars() {
+            match ch {
+                '(' => {
+                    layer += 1;
+                    execute!(
+                        w,
+                        style::SetBackgroundColor(LAYER_COLORS[layer]),
+                        style::Print(ch),
+                        style::SetBackgroundColor(style::Color::Reset)
+                    )?;
+                }
+                ')' => {
+                    execute!(
+                        w,
+                        style::SetBackgroundColor(LAYER_COLORS[layer]),
+                        style::Print(ch),
+                        style::SetBackgroundColor(style::Color::Reset)
+                    )?;
+                    layer = layer.saturating_sub(1);
+                }
+                _ => {
+                    execute!(
+                        w,
+                        style::SetBackgroundColor(style::Color::DarkGrey),
+                        style::Print(ch),
+                        style::SetBackgroundColor(style::Color::Reset)
+                    )?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
-    pub fn print_result<W>(&self, w: &mut W) -> io::Result<()>
+    pub fn print_hay<W>(&self, w: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
@@ -82,6 +120,7 @@ impl Input {
             Err(err) => {
                 execute!(
                     w,
+                    cursor::MoveTo(LEFT_PADDING, LINES_BETWEEN),
                     style::SetBackgroundColor(style::Color::DarkRed),
                     style::Print("ERROR:"),
                     style::SetBackgroundColor(style::Color::Reset),
@@ -98,7 +137,11 @@ impl Input {
         };
         let caps = re.captures_iter(&self.hay);
 
-        execute!(w, style::Print(&self.hay))?;
+        execute!(
+            w,
+            cursor::MoveTo(LEFT_PADDING, LINES_BETWEEN),
+            style::Print(&self.hay),
+        )?;
 
         for cap in caps {
             let mut layers: Vec<usize> = Vec::new();
@@ -149,14 +192,11 @@ fn main() -> io::Result<()> {
             cursor::MoveTo(0, 0),
             style::Print(RE_TITLE),
             cursor::MoveTo(LEFT_PADDING, 0),
-            style::SetBackgroundColor(style::Color::DarkGrey),
-            style::Print(input.re()),
-            style::SetBackgroundColor(style::Color::Reset),
             cursor::MoveTo(0, LINES_BETWEEN),
             style::Print(HAY_TITLE),
-            cursor::MoveTo(LEFT_PADDING, LINES_BETWEEN),
         )?;
-        input.print_result(&mut stdout)?;
+        input.print_re(&mut stdout)?;
+        input.print_hay(&mut stdout)?;
         execute!(stdout, cursor::MoveTo(col + LEFT_PADDING, row))?;
         stdout.flush()?;
 
