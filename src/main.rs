@@ -10,6 +10,15 @@ use regex::Regex;
 
 const LINES_BETWEEN: u16 = 3;
 
+const RE_TITLE: &str = "REGULAR EXPRESSION: ";
+const HAY_TITLE: &str = "TEST STRING: ";
+
+const LEFT_PADDING: u16 = max(RE_TITLE.len(), HAY_TITLE.len()) as u16;
+
+const fn max(a: usize, b: usize) -> usize {
+    [a, b][(a < b) as usize]
+}
+
 enum Type {
     Re,
     Hay,
@@ -66,27 +75,84 @@ impl Input {
         &self.hay
     }
 
-    pub fn result(&self) -> String {
-        Regex::new(&self.re)
-            .map(|re| {
-                let mut res = String::with_capacity(self.hay.len());
-                let mut last = 0;
+    pub fn print_result<W>(&self, w: &mut W) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        let re = if let Ok(re) = Regex::new(&self.re) {
+            re
+        } else {
+            return execute!(
+                w,
+                style::SetBackgroundColor(style::Color::DarkRed),
+                style::Print("ERROR"),
+                style::SetBackgroundColor(style::Color::Reset),
+            );
+        };
+        let caps = re.captures_iter(&self.hay);
 
-                for m in re.find_iter(&self.hay).map(|m| (m.start(), m.end())) {
-                    res.push_str(&self.hay[last..m.0]);
-                    res.push('[');
-                    res.push_str(&self.hay[m.0..m.1]);
-                    res.push(']');
-                    last = m.1;
-                }
+        let mut last_cap = 0;
 
-                if last < self.hay.len() {
-                    res.push_str(&self.hay[last..]);
-                }
+        for cap in caps {
+            let c = cap.get(0).unwrap(); // this cannot return None
+            let start = c.start();
+            let end = c.end();
+            let mut last_mat = start;
 
-                res
-            })
-            .unwrap_or_else(|err| err.to_string())
+            execute!(w, style::Print(&self.hay[last_cap..start]))?;
+
+            for mat in cap.iter().flatten().skip(1) {
+                let start = mat.start();
+                let end = mat.end();
+
+                execute!(
+                    w,
+                    style::SetBackgroundColor(style::Color::DarkGrey),
+                    style::Print(&self.hay[last_mat..start]),
+                    style::SetBackgroundColor(style::Color::DarkGreen),
+                    style::Print(&self.hay[start..end]),
+                    style::SetBackgroundColor(style::Color::Reset)
+                )?;
+
+                last_mat = end;
+            }
+
+            if last_mat < end {
+                execute!(
+                    w,
+                    style::SetBackgroundColor(style::Color::DarkGrey),
+                    style::Print(&self.hay[last_mat..end]),
+                    style::SetBackgroundColor(style::Color::Reset)
+                )?;
+            }
+
+            last_cap = end;
+        }
+
+        if last_cap < self.hay.len() {
+            execute!(w, style::Print(&self.hay[last_cap..]))?;
+        }
+
+        // match matches {
+        //     Ok(matches) => {
+        //         let mut last = 0;
+        //         for  in matches {
+        //             execute!(
+        //                 w,
+        //                 style::Print(&self.hay[last..start]),
+        //                 style::SetBackgroundColor(style::Color::DarkGreen),
+        //                 style::Print(&self.hay[start..end]),
+        //                 style::SetBackgroundColor(style::Color::Reset)
+        //             )?;
+        //             last = end;
+        //         }
+        //         if last != self.hay.len() {
+        //             execute!(w, style::Print(&self.hay[last..]))?;
+        //         }
+        //     }
+        //     Err(_) => execute!(w, style::Print("error"))?,
+        // };
+        Ok(())
     }
 
     pub fn pos(&self) -> (u16, u16) {
@@ -111,13 +177,15 @@ fn main() -> io::Result<()> {
             stdout,
             terminal::Clear(ClearType::All),
             cursor::MoveTo(0, 0),
+            style::Print(RE_TITLE),
+            cursor::MoveTo(LEFT_PADDING, 0),
             style::Print(input.re()),
             cursor::MoveTo(0, LINES_BETWEEN),
-            style::Print(input.hay()),
-            cursor::MoveTo(0, LINES_BETWEEN + 5),
-            style::Print(input.result()),
-            cursor::MoveTo(col, row),
+            style::Print(HAY_TITLE),
+            cursor::MoveTo(LEFT_PADDING, LINES_BETWEEN),
         )?;
+        input.print_result(&mut stdout)?;
+        execute!(stdout, cursor::MoveTo(col + LEFT_PADDING, row))?;
         stdout.flush()?;
 
         if let Event::Key(event) = read()? {
