@@ -121,9 +121,10 @@ impl App {
         execute!(w, Clear(ClearType::All))?;
 
         print_at(w, Color::Reset, RE_TITLE, 0, 0)?;
-        self.draw_re(w, LEFT_PADDING, 0)?;
-
         print_at(w, Color::Reset, HAY_TITLE, 0, LINES_BETWEEN)?;
+        print_layers_color(w, LEFT_PADDING, LINES_BETWEEN * 3)?;
+
+        self.draw_re(w, LEFT_PADDING, 0)?;
         self.draw_hay(w, LEFT_PADDING, LINES_BETWEEN)?;
 
         let (col, row) = self.pos();
@@ -290,6 +291,18 @@ where
 {
     execute!(w, MoveTo(col, row))?;
     print(w, bg, text)
+}
+
+fn print_layers_color<W>(w: &mut W, col: u16, row: u16) -> io::Result<()>
+where
+    W: io::Write,
+{
+    execute!(w, MoveTo(col, row))?;
+    for color in LAYER_COLORS {
+        print(w, color, "  ")?;
+    }
+
+    Ok(())
 }
 
 fn main() -> io::Result<()> {
