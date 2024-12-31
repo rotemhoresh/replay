@@ -1,10 +1,11 @@
-use std::io::{self, Write, stdout};
+use std::{fmt::Display, io};
 
 use crossterm::{
-    cursor,
-    event::{Event, KeyCode, read},
-    execute, style,
-    terminal::{self, ClearType},
+    cursor::MoveTo,
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    execute,
+    style::{Color, Print, SetBackgroundColor},
+    terminal::{self, Clear, ClearType},
 };
 use regex::Regex;
 
@@ -15,13 +16,13 @@ const HAY_TITLE: &str = "TEST STRING: ";
 
 const LEFT_PADDING: u16 = max(RE_TITLE.len(), HAY_TITLE.len()) as u16;
 
-const LAYER_COLORS: [style::Color; 6] = [
-    style::Color::DarkGrey, // marks the main match itself
-    style::Color::DarkGreen,
-    style::Color::DarkYellow,
-    style::Color::DarkBlue,
-    style::Color::DarkMagenta,
-    style::Color::DarkCyan,
+const LAYER_COLORS: [Color; 6] = [
+    Color::DarkGrey, // marks the main match itself
+    Color::DarkGreen,
+    Color::DarkYellow,
+    Color::DarkBlue,
+    Color::DarkMagenta,
+    Color::DarkCyan,
 ];
 
 const fn max(a: usize, b: usize) -> usize {
@@ -33,134 +34,227 @@ enum Type {
     Hay,
 }
 
+#[derive(Default)]
 struct Input {
-    typ: Type,
-    re: String,
-    hay: String,
+    string: String,
+    cursor: usize,
 }
 
 impl Input {
-    pub fn new() -> Self {
-        Self {
-            typ: Type::Re,
-            re: String::new(),
-            hay: String::new(),
+    pub fn insert(&mut self, ch: char) {
+        let index = self.byte_index();
+        self.string.insert(index, ch);
+        self.move_cursor_right();
+    }
+
+    pub fn delete_char(&mut self) {
+        if self.cursor > 0 {
+            let before = self.string.chars().take(self.cursor - 1);
+            let after = self.string.chars().skip(self.cursor);
+
+            self.string = before.chain(after).collect();
+            self.move_cursor_left();
         }
     }
 
-    pub fn pop(&mut self) {
-        match self.typ {
-            Type::Re => self.re.pop(),
-            Type::Hay => self.hay.pop(),
-        };
+    pub fn move_cursor_end(&mut self) {
+        self.cursor = self.string.len();
     }
 
-    pub fn push(&mut self, ch: char) {
-        match self.typ {
-            Type::Re => self.re.push(ch),
-            Type::Hay => self.hay.push(ch),
-        };
+    pub fn move_cursor_start(&mut self) {
+        self.cursor = 0;
     }
 
-    pub fn switch(&mut self) {
+    pub fn move_cursor_left(&mut self) {
+        let cursor_moved_left = self.cursor.saturating_sub(1);
+        self.cursor = self.clamp_cursor(cursor_moved_left);
+    }
+
+    pub fn move_cursor_right(&mut self) {
+        let cursor_moved_right = self.cursor.saturating_add(1);
+        self.cursor = self.clamp_cursor(cursor_moved_right);
+    }
+
+    fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
+        new_cursor_pos.clamp(0, self.string.chars().count())
+    }
+
+    /// Returns the byte index based on the character position.
+    ///
+    /// Since each character in a string can be contain multiple bytes, it's necessary to calculate
+    /// the byte index based on the index of the character.
+    fn byte_index(&self) -> usize {
+        self.string
+            .char_indices()
+            .map(|(i, _)| i)
+            .nth(self.cursor)
+            .unwrap_or(self.string.len())
+    }
+}
+
+struct App {
+    typ: Type,
+    re: Input,
+    hay: Input,
+    exit: bool,
+}
+
+impl App {
+    pub fn run<W>(&mut self, w: &mut W) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        while !self.exit {
+            self.draw(w)?;
+            self.handle_events()?;
+        }
+
+        // clear the screen after exiting
+        execute!(w, MoveTo(0, 0), Clear(ClearType::All))?;
+        w.flush()
+    }
+
+    fn draw<W>(&self, w: &mut W) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        execute!(w, Clear(ClearType::All))?;
+
+        print_at(w, Color::Reset, RE_TITLE, 0, 0)?;
+        self.draw_re(w, LEFT_PADDING, 0)?;
+
+        print_at(w, Color::Reset, HAY_TITLE, 0, LINES_BETWEEN)?;
+        self.draw_hay(w, LEFT_PADDING, LINES_BETWEEN)?;
+
+        let (col, row) = self.pos();
+        execute!(w, MoveTo(col, row))?;
+
+        w.flush()
+    }
+
+    fn handle_events(&mut self) -> io::Result<()> {
+        match event::read()? {
+            // it's important to check that the event is a key press event as
+            // crossterm also emits key release and repeat events on Windows.
+            Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                self.handle_key_event(key_event)
+            }
+            _ => {}
+        };
+        Ok(())
+    }
+
+    fn handle_key_event(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Char(ch) => self.current_mut().insert(ch),
+            KeyCode::Backspace => self.current_mut().delete_char(),
+            KeyCode::Left => {
+                if key_event.modifiers.intersects(KeyModifiers::CONTROL) {
+                    self.current_mut().move_cursor_start()
+                } else {
+                    self.current_mut().move_cursor_left()
+                }
+            }
+            KeyCode::Right => {
+                if key_event.modifiers.intersects(KeyModifiers::CONTROL) {
+                    self.current_mut().move_cursor_end()
+                } else {
+                    self.current_mut().move_cursor_right()
+                }
+            }
+            KeyCode::Tab | KeyCode::Up | KeyCode::Down => self.switch(),
+            KeyCode::Esc => self.exit(),
+            _ => {}
+        }
+    }
+
+    fn exit(&mut self) {
+        self.exit = true;
+    }
+
+    fn current_mut(&mut self) -> &mut Input {
+        match self.typ {
+            Type::Re => &mut self.re,
+            Type::Hay => &mut self.hay,
+        }
+    }
+
+    pub fn new() -> Self {
+        Self {
+            typ: Type::Re,
+            re: Input::default(),
+            hay: Input::default(),
+            exit: false,
+        }
+    }
+
+    fn switch(&mut self) {
         self.typ = match self.typ {
             Type::Re => Type::Hay,
             Type::Hay => Type::Re,
         };
     }
 
-    pub fn print_re<W>(&self, w: &mut W) -> io::Result<()>
+    pub fn draw_re<W>(&self, w: &mut W, col: u16, row: u16) -> io::Result<()>
     where
         W: io::Write,
     {
-        execute!(w, cursor::MoveTo(LEFT_PADDING, 0))?;
+        execute!(w, MoveTo(col, row))?;
 
         let mut layer = 0;
 
-        for ch in self.re.chars() {
-            match ch {
+        for ch in self.re.string.chars() {
+            let color = match ch {
                 '(' => {
                     layer += 1;
-                    execute!(
-                        w,
-                        style::SetBackgroundColor(LAYER_COLORS[layer]),
-                        style::Print(ch),
-                        style::SetBackgroundColor(style::Color::Reset)
-                    )?;
+                    LAYER_COLORS[layer]
                 }
                 ')' => {
-                    execute!(
-                        w,
-                        style::SetBackgroundColor(LAYER_COLORS[layer]),
-                        style::Print(ch),
-                        style::SetBackgroundColor(style::Color::Reset)
-                    )?;
+                    let color = LAYER_COLORS[layer];
                     layer = layer.saturating_sub(1);
+                    color
                 }
-                _ => {
-                    execute!(
-                        w,
-                        style::SetBackgroundColor(style::Color::DarkGrey),
-                        style::Print(ch),
-                        style::SetBackgroundColor(style::Color::Reset)
-                    )?;
-                }
-            }
+                _ => Color::DarkGrey,
+            };
+            print(w, color, ch)?;
         }
 
         Ok(())
     }
 
-    pub fn print_hay<W>(&self, w: &mut W) -> io::Result<()>
+    fn draw_hay<W>(&self, w: &mut W, col: u16, row: u16) -> io::Result<()>
     where
         W: io::Write,
     {
-        let re = match Regex::new(&self.re) {
+        let re = match Regex::new(&self.re.string) {
             Ok(re) => re,
             Err(err) => {
-                execute!(
-                    w,
-                    cursor::MoveTo(LEFT_PADDING, LINES_BETWEEN),
-                    style::SetBackgroundColor(style::Color::DarkRed),
-                    style::Print("ERROR:"),
-                    style::SetBackgroundColor(style::Color::Reset),
-                )?;
+                print_at(w, Color::DarkRed, "ERROR:", col, row)?;
                 for (i, line) in err.to_string().lines().enumerate() {
-                    execute!(
-                        w,
-                        cursor::MoveTo(LEFT_PADDING, LINES_BETWEEN + 1 + i as u16),
-                        style::Print(line),
-                    )?;
+                    print_at(w, Color::Reset, line, col, row + 1 + i as u16)?;
                 }
                 return Ok(());
             }
         };
-        let caps = re.captures_iter(&self.hay);
+        let caps = re.captures_iter(&self.hay.string);
 
-        execute!(
-            w,
-            cursor::MoveTo(LEFT_PADDING, LINES_BETWEEN),
-            style::Print(&self.hay),
-        )?;
+        print_at(w, Color::Reset, &self.hay.string, col, row)?;
 
         for cap in caps {
-            let mut layers: Vec<usize> = Vec::new();
+            let mut layers = Vec::new();
 
             for mat in cap.iter().flatten() {
-                let start = mat.start();
-                let end = mat.end();
-
-                while layers.last().is_some_and(|l| *l <= start) {
+                while layers.last().is_some_and(|l| *l <= mat.start()) {
                     layers.pop();
                 }
-                layers.push(end);
+                layers.push(mat.end());
 
-                execute!(
+                print_at(
                     w,
-                    cursor::MoveTo(LEFT_PADDING + start as u16, LINES_BETWEEN),
-                    style::SetBackgroundColor(LAYER_COLORS[layers.len() - 1]),
-                    style::Print(&self.hay[start..end]),
-                    style::SetBackgroundColor(style::Color::Reset)
+                    LAYER_COLORS[layers.len() - 1],
+                    &self.hay.string[mat.start()..mat.end()],
+                    col + mat.start() as u16,
+                    row,
                 )?;
             }
         }
@@ -168,56 +262,39 @@ impl Input {
         Ok(())
     }
 
-    pub fn pos(&self) -> (u16, u16) {
+    fn pos(&self) -> (u16, u16) {
         match self.typ {
-            Type::Re => (self.re.len() as u16, 0),
-            Type::Hay => (self.hay.len() as u16, LINES_BETWEEN),
+            Type::Re => (LEFT_PADDING + self.re.cursor as u16, 0),
+            Type::Hay => (LEFT_PADDING + self.hay.cursor as u16, LINES_BETWEEN),
         }
     }
 }
 
-fn main() -> io::Result<()> {
-    let mut stdout = stdout();
-    let (_, _) = terminal::size()?;
-
-    terminal::enable_raw_mode()?;
-
-    let mut input = Input::new();
-
-    loop {
-        let (col, row) = input.pos();
-        execute!(
-            stdout,
-            terminal::Clear(ClearType::All),
-            cursor::MoveTo(0, 0),
-            style::Print(RE_TITLE),
-            cursor::MoveTo(LEFT_PADDING, 0),
-            cursor::MoveTo(0, LINES_BETWEEN),
-            style::Print(HAY_TITLE),
-        )?;
-        input.print_re(&mut stdout)?;
-        input.print_hay(&mut stdout)?;
-        execute!(stdout, cursor::MoveTo(col + LEFT_PADDING, row))?;
-        stdout.flush()?;
-
-        if let Event::Key(event) = read()? {
-            match event.code {
-                KeyCode::Esc => break,
-                KeyCode::Backspace => input.pop(),
-                KeyCode::Char(ch) => input.push(ch),
-                KeyCode::Tab => input.switch(),
-                _ => (),
-            }
-        }
-    }
-
+fn print<W, T>(w: &mut W, bg: Color, text: T) -> io::Result<()>
+where
+    W: io::Write,
+    T: Display,
+{
     execute!(
-        stdout,
-        terminal::Clear(ClearType::All),
-        cursor::MoveTo(0, 0),
-    )?;
+        w,
+        SetBackgroundColor(bg),
+        Print(text),
+        SetBackgroundColor(Color::Reset)
+    )
+}
 
+fn print_at<W, T>(w: &mut W, bg: Color, text: T, col: u16, row: u16) -> io::Result<()>
+where
+    W: io::Write,
+    T: Display,
+{
+    execute!(w, MoveTo(col, row))?;
+    print(w, bg, text)
+}
+
+fn main() -> io::Result<()> {
+    terminal::enable_raw_mode()?;
+    let app_result = App::new().run(&mut io::stdout());
     terminal::disable_raw_mode()?;
-
-    Ok(())
+    app_result
 }
