@@ -4,7 +4,7 @@ use crossterm::{
     cursor::MoveTo,
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
-    style::{Color, Print, SetBackgroundColor},
+    style::{Color, Print, SetForegroundColor},
     terminal::{self, Clear, ClearType},
 };
 use regex::Regex;
@@ -17,12 +17,12 @@ const HAY_TITLE: &str = "TEST STRING: ";
 const LEFT_PADDING: u16 = max(RE_TITLE.len(), HAY_TITLE.len()) as u16;
 
 const LAYER_COLORS: [Color; 6] = [
-    Color::DarkGrey, // marks the main match itself
-    Color::DarkGreen,
-    Color::DarkYellow,
-    Color::DarkBlue,
-    Color::DarkMagenta,
-    Color::DarkCyan,
+    Color::Grey, // marks the main match itself
+    Color::Green,
+    Color::Yellow,
+    Color::Blue,
+    Color::Magenta,
+    Color::Cyan,
 ];
 
 const fn max(a: usize, b: usize) -> usize {
@@ -243,6 +243,7 @@ impl App {
 
         for cap in caps {
             let mut layers = Vec::new();
+            let mut infos = Vec::new();
 
             for mat in cap.iter().flatten() {
                 while layers.last().is_some_and(|l| *l <= mat.start()) {
@@ -250,13 +251,28 @@ impl App {
                 }
                 layers.push(mat.end());
 
+                let color = LAYER_COLORS[layers.len() - 1];
+
                 print_at(
                     w,
-                    LAYER_COLORS[layers.len() - 1],
+                    color,
                     &self.hay.string[mat.start()..mat.end()],
                     col + mat.start() as u16,
                     row,
                 )?;
+
+                infos.push((mat.start(), layers.len() - 1));
+            }
+
+            for (i, (idx, layer)) in infos.iter().enumerate() {
+                let color = LAYER_COLORS[*layer];
+                let col = col + *idx as u16;
+
+                for line in 1..=infos.len() - i + 1 {
+                    print_at(w, color, '|', col, row + line as u16)?;
+                }
+
+                print_at(w, color, layer, col, row + (infos.len() - i) as u16 + 1)?;
             }
         }
 
@@ -278,9 +294,9 @@ where
 {
     execute!(
         w,
-        SetBackgroundColor(bg),
+        SetForegroundColor(bg),
         Print(text),
-        SetBackgroundColor(Color::Reset)
+        SetForegroundColor(Color::Reset)
     )
 }
 
