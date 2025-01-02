@@ -4,6 +4,10 @@
 >
 > See [Project Status](#status).
 
+![screenshot](./assets/screenshot.png)
+
+_Screenshot showcasing current state of highlighting and capture group marking._
+
 ## Overview
 
 This project attempts to bring [regex101](https://regex101.com/)'s functionality to the terminal.
