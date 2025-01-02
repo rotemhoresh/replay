@@ -1,5 +1,8 @@
+mod cache;
+
 use std::{fmt::Display, io};
 
+use cache::RegexCache;
 use crossterm::{
     cursor::MoveTo,
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
@@ -27,6 +30,30 @@ const LAYER_COLORS: [Color; 6] = [
 
 const fn max(a: usize, b: usize) -> usize {
     [a, b][(a < b) as usize]
+}
+
+struct Change {
+    content: bool,
+    cursor: bool,
+}
+
+impl Change {
+    pub fn new() -> Self {
+        Self {
+            content: false,
+            cursor: false,
+        }
+    }
+
+    pub fn content(mut self) -> Self {
+        self.content = true;
+        self
+    }
+
+    pub fn cursor(mut self) -> Self {
+        self.cursor = true;
+        self
+    }
 }
 
 enum Type {
@@ -94,6 +121,7 @@ impl Input {
 
 struct App {
     typ: Type,
+    regex: RegexCache,
     re: Input,
     hay: Input,
     exit: bool,
@@ -104,9 +132,21 @@ impl App {
     where
         W: io::Write,
     {
+        let mut change = Change::new().cursor().content();
+
         while !self.exit {
-            self.draw(w)?;
-            self.handle_events()?;
+            if change.content {
+                self.draw(w)?;
+            }
+            if change.cursor {
+                let (col, row) = self.pos();
+                execute!(w, MoveTo(col, row))?;
+            }
+            if change.content || change.cursor {
+                w.flush()?;
+            }
+
+            change = self.handle_events()?;
         }
 
         // clear the screen after exiting
@@ -114,7 +154,7 @@ impl App {
         w.flush()
     }
 
-    fn draw<W>(&self, w: &mut W) -> io::Result<()>
+    fn draw<W>(&mut self, w: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
@@ -122,50 +162,58 @@ impl App {
 
         print_at(w, Color::Reset, RE_TITLE, 0, 0)?;
         print_at(w, Color::Reset, HAY_TITLE, 0, LINES_BETWEEN)?;
-        print_layers_color(w, LEFT_PADDING, LINES_BETWEEN * 3)?;
 
         self.draw_re(w, LEFT_PADDING, 0)?;
-        self.draw_hay(w, LEFT_PADDING, LINES_BETWEEN)?;
-
-        let (col, row) = self.pos();
-        execute!(w, MoveTo(col, row))?;
-
-        w.flush()
+        self.draw_hay(w, LEFT_PADDING, LINES_BETWEEN)
     }
 
-    fn handle_events(&mut self) -> io::Result<()> {
-        match event::read()? {
+    fn handle_events(&mut self) -> io::Result<Change> {
+        let change = match event::read()? {
             // it's important to check that the event is a key press event as
             // crossterm also emits key release and repeat events on Windows.
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
                 self.handle_key_event(key_event)
             }
-            _ => {}
+            _ => Change::new(),
         };
-        Ok(())
+        Ok(change)
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) {
+    fn handle_key_event(&mut self, key_event: KeyEvent) -> Change {
         match key_event.code {
-            KeyCode::Char(ch) => self.current_mut().insert(ch),
-            KeyCode::Backspace => self.current_mut().delete_char(),
+            KeyCode::Char(ch) => {
+                self.current_mut().insert(ch);
+                Change::new().content().cursor()
+            }
+            KeyCode::Backspace => {
+                self.current_mut().delete_char();
+                Change::new().content().cursor()
+            }
             KeyCode::Left => {
                 if key_event.modifiers.intersects(KeyModifiers::CONTROL) {
-                    self.current_mut().move_cursor_start()
+                    self.current_mut().move_cursor_start();
                 } else {
-                    self.current_mut().move_cursor_left()
+                    self.current_mut().move_cursor_left();
                 }
+                Change::new().cursor()
             }
             KeyCode::Right => {
                 if key_event.modifiers.intersects(KeyModifiers::CONTROL) {
-                    self.current_mut().move_cursor_end()
+                    self.current_mut().move_cursor_end();
                 } else {
-                    self.current_mut().move_cursor_right()
+                    self.current_mut().move_cursor_right();
                 }
+                Change::new().cursor()
             }
-            KeyCode::Tab | KeyCode::Up | KeyCode::Down => self.switch(),
-            KeyCode::Esc => self.exit(),
-            _ => {}
+            KeyCode::Tab | KeyCode::Up | KeyCode::Down => {
+                self.switch();
+                Change::new().cursor()
+            }
+            KeyCode::Esc => {
+                self.exit();
+                Change::new()
+            }
+            _ => Change::new(),
         }
     }
 
@@ -183,6 +231,7 @@ impl App {
     pub fn new() -> Self {
         Self {
             typ: Type::Re,
+            regex: RegexCache::new(),
             re: Input::default(),
             hay: Input::default(),
             exit: false,
@@ -223,12 +272,12 @@ impl App {
         Ok(())
     }
 
-    fn draw_hay<W>(&self, w: &mut W, col: u16, row: u16) -> io::Result<()>
+    fn draw_hay<W>(&mut self, w: &mut W, col: u16, row: u16) -> io::Result<()>
     where
         W: io::Write,
     {
-        let re = match Regex::new(&self.re.string) {
-            Ok(re) => re,
+        let caps = match self.regex.get_or_init(&self.re.string, &self.hay.string) {
+            Ok(caps) => caps,
             Err(err) => {
                 print_at(w, Color::DarkRed, "ERROR:", col, row)?;
                 for (i, line) in err.to_string().lines().enumerate() {
@@ -237,7 +286,6 @@ impl App {
                 return Ok(());
             }
         };
-        let caps = re.captures_iter(&self.hay.string);
 
         print_at(w, Color::Reset, &self.hay.string, col, row)?;
 
@@ -245,28 +293,28 @@ impl App {
             let mut layers = Vec::new();
             let mut infos = Vec::new();
 
-            for mat in cap.iter().flatten() {
-                while layers.last().is_some_and(|l| *l <= mat.start()) {
+            for (start, end) in cap {
+                while layers.last().is_some_and(|l| *l <= start) {
                     layers.pop();
                 }
-                layers.push(mat.end());
+                layers.push(end);
 
                 let color = LAYER_COLORS[layers.len() - 1];
 
                 print_at(
                     w,
                     color,
-                    &self.hay.string[mat.start()..mat.end()],
-                    col + mat.start() as u16,
+                    &self.hay.string[*start..*end],
+                    col + *start as u16,
                     row,
                 )?;
 
-                infos.push((mat.start(), layers.len() - 1));
+                infos.push((start, layers.len() - 1));
             }
 
             for (i, (idx, layer)) in infos.iter().enumerate() {
                 let color = LAYER_COLORS[*layer];
-                let col = col + *idx as u16;
+                let col = col + **idx as u16;
 
                 for line in 1..=infos.len() - i + 1 {
                     print_at(w, color, '|', col, row + line as u16)?;
@@ -307,18 +355,6 @@ where
 {
     execute!(w, MoveTo(col, row))?;
     print(w, bg, text)
-}
-
-fn print_layers_color<W>(w: &mut W, col: u16, row: u16) -> io::Result<()>
-where
-    W: io::Write,
-{
-    execute!(w, MoveTo(col, row))?;
-    for color in LAYER_COLORS {
-        print(w, color, "  ")?;
-    }
-
-    Ok(())
 }
 
 fn main() -> io::Result<()> {
