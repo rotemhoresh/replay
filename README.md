@@ -44,7 +44,7 @@ export PATH="$PATH:<path>"
 
 ## Usage
 
-To run this CLI, simply run the binary:
+To run this tool, simply run the binary:
 
 ```bash
 replay
@@ -85,7 +85,7 @@ If your regular expression is invalid, an error will be shown in the `TEST STRIN
 REGULAR EXPRESSION: (
 
 
-TEST STRING:          ERROR:
+TEST STRING:        ERROR:
                     regex parse error:
                         (
                         ^
