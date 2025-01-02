@@ -10,7 +10,6 @@ use crossterm::{
     style::{Color, Print, SetForegroundColor},
     terminal::{self, Clear, ClearType},
 };
-use regex::Regex;
 
 const LINES_BETWEEN: u16 = 3;
 
@@ -292,6 +291,7 @@ impl App {
         for cap in caps {
             let mut layers = Vec::new();
             let mut infos = Vec::new();
+            let mut max_layer = 0;
 
             for (start, end) in cap {
                 while layers.last().is_some_and(|l| *l <= start) {
@@ -309,18 +309,33 @@ impl App {
                     row,
                 )?;
 
-                infos.push((start, layers.len() - 1));
+                infos.push((*start, *end, layers.len() - 1));
+                if layers.len() - 1 > max_layer {
+                    max_layer = layers.len() - 1;
+                }
             }
 
-            for (i, (idx, layer)) in infos.iter().enumerate() {
+            for (start, end, layer) in infos.iter() {
                 let color = LAYER_COLORS[*layer];
-                let col = col + **idx as u16;
+                let start = *start as u16;
+                let end = *end as u16;
 
-                for line in 1..=infos.len() - i + 1 {
-                    print_at(w, color, '|', col, row + line as u16)?;
+                for idx in start..end.saturating_sub(1) {
+                    print_at(w, color, '~', col + idx, row + *layer as u16 + 1)?;
+                }
+                print_at(
+                    w,
+                    color,
+                    '|',
+                    col + end.saturating_sub(1),
+                    row + *layer as u16 + 1,
+                )?;
+
+                for line in *layer + 1..=max_layer + 1 {
+                    print_at(w, color, '|', col + start, row + line as u16)?;
                 }
 
-                print_at(w, color, layer, col, row + (infos.len() - i) as u16 + 1)?;
+                print_at(w, color, layer, col + start, row + max_layer as u16 + 2)?;
             }
         }
 
