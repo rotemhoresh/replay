@@ -40,7 +40,7 @@ impl RegexCache {
     ) -> Result<&Vec<Vec<(usize, usize)>>, &regex::Error> {
         self.cache
             .entry(re.to_owned())
-            .or_insert_with(|| Regex::new("re").map(|r| (r, CapturesCache::new())))
+            .or_insert_with(|| Regex::new(re).map(|r| (r, CapturesCache::new())))
             .as_mut()
             .map(|(r, c)| c.get_or_init(r, hay))
             .map_err(|err| &*err)
