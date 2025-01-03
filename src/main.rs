@@ -8,7 +8,7 @@ use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
     style::{Color, Print, SetForegroundColor},
-    terminal::{self, Clear, ClearType},
+    terminal::{self, Clear, ClearType, DisableLineWrap},
 };
 
 const LINES_BETWEEN: u16 = 3;
@@ -132,6 +132,7 @@ impl App {
         W: io::Write,
     {
         let mut change = Change::new().cursor().content();
+        execute!(w, DisableLineWrap)?;
 
         while !self.exit {
             if change.content {
