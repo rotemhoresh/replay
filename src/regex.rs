@@ -22,11 +22,11 @@ impl CapturesCache {
     }
 }
 
-pub struct RegexCache {
+pub struct Cache {
     cache: HashMap<String, Result<(Regex, CapturesCache), regex::Error>>,
 }
 
-impl RegexCache {
+impl Cache {
     pub fn new() -> Self {
         Self {
             cache: HashMap::new(),

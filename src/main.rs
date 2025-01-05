@@ -5,7 +5,7 @@ use replay::App;
 
 fn main() -> io::Result<()> {
     terminal::enable_raw_mode()?;
-    let app_result = App::new().run(&mut io::stdout());
+    let app_result = App::new(&mut io::stdout()).run();
     terminal::disable_raw_mode()?;
     app_result
 }
