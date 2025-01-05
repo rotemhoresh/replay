@@ -63,7 +63,7 @@ You'll be presented with two text inputs, one for the regex and one for the test
 REGULAR EXPRESSION: 
 
 
-TEST STRING:          
+TEST STRING       :
 ```
 
 You can switch between the inputs using:
@@ -71,11 +71,17 @@ You can switch between the inputs using:
 - `Up`
 - `Down`
 - `Tab`
+- `Ctrl + J`
+- `Ctrl + K`
+- `Ctrl + N`
+- `Ctrl + P`
 
 You can move inside the inputs using:
 
 - `Right`: one character right
 - `Left`: one character left
+- `Ctrl + L`: one character right
+- `Ctrl + H`: one character left
 - `Ctrl + Right`: to the rightmost character
 - `Ctrl + Left`: to the leftmost character
 
@@ -89,7 +95,7 @@ If your regular expression is invalid, an error will be shown in the `TEST STRIN
 REGULAR EXPRESSION: (
 
 
-TEST STRING:        ERROR:
+TEST STRING       : ERROR:
                     regex parse error:
                         (
                         ^

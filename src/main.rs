@@ -14,7 +14,7 @@ use crossterm::{
 const LINES_BETWEEN: u16 = 3;
 
 const RE_TITLE: &str = "REGULAR EXPRESSION: ";
-const HAY_TITLE: &str = "TEST STRING: ";
+const HAY_TITLE: &str = "TEST STRING       : ";
 
 const LEFT_PADDING: u16 = max(RE_TITLE.len(), HAY_TITLE.len()) as u16;
 
@@ -67,38 +67,47 @@ struct Input {
 }
 
 impl Input {
-    pub fn insert(&mut self, ch: char) {
+    pub fn insert(&mut self, ch: char) -> Change {
         let index = self.byte_index();
         self.string.insert(index, ch);
         self.move_cursor_right();
+        Change::new().cursor().content()
     }
 
-    pub fn delete_char(&mut self) {
+    pub fn delete_char(&mut self) -> Change {
         if self.cursor > 0 {
             let before = self.string.chars().take(self.cursor - 1);
             let after = self.string.chars().skip(self.cursor);
 
             self.string = before.chain(after).collect();
             self.move_cursor_left();
+
+            Change::new().content().cursor()
+        } else {
+            Change::new()
         }
     }
 
-    pub fn move_cursor_end(&mut self) {
+    pub fn move_cursor_end(&mut self) -> Change {
         self.cursor = self.string.len();
+        Change::new().cursor()
     }
 
-    pub fn move_cursor_start(&mut self) {
+    pub fn move_cursor_start(&mut self) -> Change {
         self.cursor = 0;
+        Change::new().cursor()
     }
 
-    pub fn move_cursor_left(&mut self) {
+    pub fn move_cursor_left(&mut self) -> Change {
         let cursor_moved_left = self.cursor.saturating_sub(1);
         self.cursor = self.clamp_cursor(cursor_moved_left);
+        Change::new().cursor()
     }
 
-    pub fn move_cursor_right(&mut self) {
+    pub fn move_cursor_right(&mut self) -> Change {
         let cursor_moved_right = self.cursor.saturating_add(1);
         self.cursor = self.clamp_cursor(cursor_moved_right);
+        Change::new().cursor()
     }
 
     fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
@@ -182,43 +191,41 @@ impl App {
     fn handle_key_event(&mut self, key_event: KeyEvent) -> Change {
         match key_event.code {
             KeyCode::Char(ch) => {
-                self.current_mut().insert(ch);
-                Change::new().content().cursor()
+                if key_event.modifiers.intersects(KeyModifiers::CONTROL) {
+                    match ch {
+                        'h' => self.current_mut().move_cursor_left(),
+                        'j' | 'k' | 'n' | 'p' => self.switch(),
+                        'l' => self.current_mut().move_cursor_right(),
+                        _ => Change::new(),
+                    }
+                } else {
+                    self.current_mut().insert(ch)
+                }
             }
-            KeyCode::Backspace => {
-                self.current_mut().delete_char();
-                Change::new().content().cursor()
-            }
+            KeyCode::Backspace => self.current_mut().delete_char(),
             KeyCode::Left => {
                 if key_event.modifiers.intersects(KeyModifiers::CONTROL) {
-                    self.current_mut().move_cursor_start();
+                    self.current_mut().move_cursor_start()
                 } else {
-                    self.current_mut().move_cursor_left();
+                    self.current_mut().move_cursor_left()
                 }
-                Change::new().cursor()
             }
             KeyCode::Right => {
                 if key_event.modifiers.intersects(KeyModifiers::CONTROL) {
-                    self.current_mut().move_cursor_end();
+                    self.current_mut().move_cursor_end()
                 } else {
-                    self.current_mut().move_cursor_right();
+                    self.current_mut().move_cursor_right()
                 }
-                Change::new().cursor()
             }
-            KeyCode::Tab | KeyCode::Up | KeyCode::Down => {
-                self.switch();
-                Change::new().cursor()
-            }
-            KeyCode::Esc => {
-                self.exit();
-                Change::new()
-            }
+            KeyCode::Tab | KeyCode::Up | KeyCode::Down => self.switch(),
+            KeyCode::Esc => self.exit(),
             _ => Change::new(),
         }
     }
 
-    fn exit(&mut self) {
+    fn exit(&mut self) -> Change {
         self.exit = true;
+        Change::new()
     }
 
     fn current_mut(&mut self) -> &mut Input {
@@ -238,11 +245,12 @@ impl App {
         }
     }
 
-    fn switch(&mut self) {
+    fn switch(&mut self) -> Change {
         self.typ = match self.typ {
             Type::Re => Type::Hay,
             Type::Hay => Type::Re,
         };
+        Change::new().cursor()
     }
 
     pub fn draw_re<W>(&self, w: &mut W, col: u16, row: u16) -> io::Result<()>
