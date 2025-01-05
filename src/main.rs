@@ -6,7 +6,7 @@ use cache::RegexCache;
 use crossterm::{
     cursor::MoveTo,
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-    execute,
+    execute, queue,
     style::{Color, Print, SetForegroundColor},
     terminal::{self, Clear, ClearType, DisableLineWrap},
 };
@@ -141,7 +141,7 @@ impl App {
         W: io::Write,
     {
         let mut change = Change::new().cursor().content();
-        execute!(w, DisableLineWrap)?;
+        queue!(w, DisableLineWrap)?;
 
         while !self.exit {
             if change.content {
@@ -149,7 +149,7 @@ impl App {
             }
             if change.cursor {
                 let (col, row) = self.pos();
-                execute!(w, MoveTo(col, row))?;
+                queue!(w, MoveTo(col, row))?;
             }
             if change.content || change.cursor {
                 w.flush()?;
@@ -159,15 +159,14 @@ impl App {
         }
 
         // clear the screen after exiting
-        execute!(w, MoveTo(0, 0), Clear(ClearType::All))?;
-        w.flush()
+        execute!(w, MoveTo(0, 0), Clear(ClearType::All))
     }
 
     fn draw<W>(&mut self, w: &mut W) -> io::Result<()>
     where
         W: io::Write,
     {
-        execute!(w, Clear(ClearType::All))?;
+        queue!(w, Clear(ClearType::All))?;
 
         print_at(w, Color::Reset, RE_TITLE, 0, 0)?;
         print_at(w, Color::Reset, HAY_TITLE, 0, LINES_BETWEEN)?;
@@ -257,7 +256,7 @@ impl App {
     where
         W: io::Write,
     {
-        execute!(w, MoveTo(col, row))?;
+        queue!(w, MoveTo(col, row))?;
 
         let mut layer = 0;
 
@@ -364,7 +363,7 @@ where
     W: io::Write,
     T: Display,
 {
-    execute!(
+    queue!(
         w,
         SetForegroundColor(bg),
         Print(text),
@@ -377,7 +376,7 @@ where
     W: io::Write,
     T: Display,
 {
-    execute!(w, MoveTo(col, row))?;
+    queue!(w, MoveTo(col, row))?;
     print(w, bg, text)
 }
 
