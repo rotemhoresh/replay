@@ -7,9 +7,12 @@ use anyhow::Context;
 
 use crate::input::Input;
 
-pub const DEFAULT_SESSION: &str = "unsaveable";
-
 const INVALID_CHARS: [char; 3] = [' ', '/', '\\'];
+
+pub enum SessionName {
+    Scratch,
+    Name(String),
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -18,7 +21,7 @@ pub enum Error {
 }
 
 pub struct Session {
-    pub name: String,
+    pub name: SessionName,
     pub regex_query: Input,
     pub test_string: Input,
 }
@@ -32,32 +35,44 @@ impl Session {
         let (regex_query, test_string) = parse_session(&path)?;
 
         Ok(Self {
-            name,
+            name: SessionName::Name(name),
             regex_query,
             test_string,
         })
     }
 
-    pub fn save(&self) -> io::Result<()> {
-        let path = get_path(&self.name);
-        if let Some(p) = path.parent() {
-            fs::create_dir_all(p)?;
+    pub fn scratch() -> Self {
+        Self {
+            name: SessionName::Scratch,
+            regex_query: Input::default(),
+            test_string: Input::default(),
         }
-        if self.regex_query.string.is_empty() && self.test_string.string.is_empty() {
-            // If the session if empty - don't save it, and make sure that there
-            // is no file containing the previous snapshot of it.
-            fs::remove_file(path)
+    }
+
+    pub fn save(&self) -> io::Result<()> {
+        if let SessionName::Name(ref name) = self.name {
+            let path = get_path(name);
+            if let Some(p) = path.parent() {
+                fs::create_dir_all(p)?;
+            }
+            if self.regex_query.string.is_empty() && self.test_string.string.is_empty() {
+                // If the session if empty - don't save it, and make sure that there
+                // is no file containing the previous snapshot of it.
+                fs::remove_file(path)
+            } else {
+                fs::write(
+                    &path,
+                    format!(
+                        "{}:{}\n{}:{}",
+                        self.regex_query.cursor,
+                        self.regex_query.string,
+                        self.test_string.cursor,
+                        self.test_string.string
+                    ),
+                )
+            }
         } else {
-            fs::write(
-                &path,
-                format!(
-                    "{}:{}\n{}:{}",
-                    self.regex_query.cursor,
-                    self.regex_query.string,
-                    self.test_string.cursor,
-                    self.test_string.string
-                ),
-            )
+            Ok(())
         }
     }
 }
