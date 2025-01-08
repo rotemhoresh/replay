@@ -6,6 +6,17 @@ pub struct Input {
     pub cursor: usize,
 }
 
+// TODO: add the cursor position to the session
+
+impl From<String> for Input {
+    fn from(value: String) -> Self {
+        Self {
+            string: value,
+            cursor: 0,
+        }
+    }
+}
+
 impl Input {
     pub fn insert(&mut self, ch: char) -> Change {
         let index = self.byte_index();

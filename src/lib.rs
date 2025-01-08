@@ -6,10 +6,12 @@ use crossterm::{
     terminal::DisableLineWrap,
 };
 use input::Input;
+use persist::Session;
 use regex::Cache as RegexCache;
 use render::Render;
 
 mod input;
+pub mod persist;
 mod regex;
 mod render;
 
@@ -40,8 +42,8 @@ struct Group {
 }
 
 enum Field {
-    Re,
-    Hay,
+    RegexQuery,
+    TestString,
 }
 
 struct Change {
@@ -75,27 +77,25 @@ impl Default for Change {
 }
 
 pub struct App<W: io::Write> {
+    session: Session,
     render: Render<W>,
     field: Field,
-    regex: RegexCache,
-    re: Input,
-    hay: Input,
+    regex_cache: RegexCache,
     exit: bool,
 }
 
 impl<W: io::Write> App<W> {
-    pub fn new(w: W) -> Self {
+    pub fn new(w: W, session: Session) -> Self {
         Self {
+            session,
             render: Render::new(w),
-            field: Field::Re,
-            regex: RegexCache::new(),
-            re: Input::default(),
-            hay: Input::default(),
+            field: Field::RegexQuery,
+            regex_cache: RegexCache::new(),
             exit: false,
         }
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
+    pub fn run(mut self) -> io::Result<Session> {
         let mut change = Change::new().cursor().content();
         self.render.queue(DisableLineWrap)?;
 
@@ -117,7 +117,9 @@ impl<W: io::Write> App<W> {
         // clear the screen after exiting
         self.render.move_to(0, 0)?;
         self.render.clear()?;
-        self.render.flush()
+        self.render.flush()?;
+
+        Ok(self.session)
     }
 
     fn draw(&mut self) -> io::Result<()> {
@@ -127,7 +129,7 @@ impl<W: io::Write> App<W> {
         self.render.at(Color::Reset, HAY_TITLE, 0, LINES_BETWEEN)?;
 
         self.render
-            .draw_regex_query(&self.re.string, LEFT_PADDING, 0)?;
+            .draw_regex_query(&self.session.regex_query.string, LEFT_PADDING, 0)?;
         self.draw_hay(LEFT_PADDING, LINES_BETWEEN)
     }
 
@@ -185,32 +187,39 @@ impl<W: io::Write> App<W> {
 
     fn current_field(&mut self) -> &mut Input {
         match self.field {
-            Field::Re => &mut self.re,
-            Field::Hay => &mut self.hay,
+            Field::RegexQuery => &mut self.session.regex_query,
+            Field::TestString => &mut self.session.test_string,
         }
     }
 
     fn switch(&mut self) -> Change {
         self.field = match self.field {
-            Field::Re => Field::Hay,
-            Field::Hay => Field::Re,
+            Field::RegexQuery => Field::TestString,
+            Field::TestString => Field::RegexQuery,
         };
         Change::new().cursor()
     }
 
     fn draw_hay(&mut self, col: u16, row: u16) -> io::Result<()> {
-        match self.regex.get_or_init(&self.re.string, &self.hay.string) {
-            Ok(matches) => self
-                .render
-                .draw_regex_hay(&self.hay.string, matches, col, row),
+        match self.regex_cache.get_or_init(
+            &self.session.regex_query.string,
+            &self.session.test_string.string,
+        ) {
+            Ok(matches) => {
+                self.render
+                    .draw_regex_hay(&self.session.test_string.string, matches, col, row)
+            }
             Err(err) => self.render.draw_error(&err.to_string(), col, row),
         }
     }
 
     fn pos(&self) -> (u16, u16) {
         match self.field {
-            Field::Re => (LEFT_PADDING + self.re.cursor as u16, 0),
-            Field::Hay => (LEFT_PADDING + self.hay.cursor as u16, LINES_BETWEEN),
+            Field::RegexQuery => (LEFT_PADDING + self.session.regex_query.cursor as u16, 0),
+            Field::TestString => (
+                LEFT_PADDING + self.session.test_string.cursor as u16,
+                LINES_BETWEEN,
+            ),
         }
     }
 }
