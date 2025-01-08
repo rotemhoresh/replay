@@ -117,9 +117,9 @@ Session names can be any set of characters, except:
 - Slash (`/`)
 - Backslash (`\`)
 
-If no session if provided, a special session name will be set: `unsaveable`, which will not be saved after the program finishes. Note, if you will set your session name to `unsaveable`, it will not be saved.
+If no session name is provided, it will not be saved.
 
-Currently, there is no command to clear session(s), but all the sessions are saved as files to `~/.replay/persist` (thus you can delete them by deleting their file). Also, a session with empty regex query and test string will not be saved, **and will be deleted from the `persist` directory if exist**.
+Currently, there is no command to clear session(s), but all the sessions are saved as files to `~/.replay/persist` (thus you can delete them by deleting their file). Also, a session with empty regex query and test string will not be saved, and will be deleted from the `persist` directory if exist.
 
 ## Status
 
