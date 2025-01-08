@@ -53,6 +53,9 @@ To run this tool, simply run the binary:
 ```bash
 replay
 
+# optionaly, select a session
+replay MY_AWSOME_SESSION_NAME_#123
+
 # or, if not in your PATH
 <path>/replay
 ```
@@ -85,6 +88,10 @@ You can move inside the inputs using:
 - `Ctrl + Right`: to the rightmost character
 - `Ctrl + Left`: to the leftmost character
 
+You can close the program by using:
+
+- `ESC`
+
 When the regex field contains a valid expression, the test string field will be colored according to matches and capture groups.
 
 ### Errors
@@ -102,6 +109,18 @@ TEST STRING       : ERROR:
                     error: unclosed group
 ```
 
+### Sessions
+
+Session names can be any set of characters, except:
+
+- Space (` `)
+- Slash (`/`)
+- Backslash (`\`)
+
+If no session if provided, a special session name will be set: `unsaveable`, which will not be saved after the program finishes. Note, if you will set your session name to `unsaveable`, it will not be saved.
+
+Currently, there is no command to clear session(s), but all the sessions are saved as files to `~/.replay/persist` (thus you can delete them by deleting their file). Also, a session with empty regex query and test string will not be saved, **and will be deleted from the `persist` directory if exist**.
+
 ## Status
 
 This project is currently a work in progress.
@@ -115,6 +134,7 @@ For now, it seems to me that more useful features are more important than suppor
 ### Features
 
 - [X] Basic regex parsing and test string mathches and captures groups highlighting in different color per group layel.
+- [X] Session management - by allowing the user to choose a session (by an arbitrary string, with some limitations) which will be saved, thus when choosing an already existing session, its snapshot will be loaded.
 - [ ] Syntax highlighting for the regular expression.
 - [ ] A widget that explain stuff and present insights on specific parts on demand.
 
