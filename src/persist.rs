@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     fs, io,
     path::{Path, PathBuf},
 };
@@ -12,6 +13,20 @@ const INVALID_CHARS: [char; 3] = [' ', '/', '\\'];
 pub enum SessionName {
     Scratch,
     Name(String),
+}
+
+impl Display for SessionName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "-- {} --",
+            if let Self::Name(name) = self {
+                name
+            } else {
+                "<scratch>"
+            },
+        )
+    }
 }
 
 #[derive(Debug)]

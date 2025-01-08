@@ -6,7 +6,7 @@ use crossterm::{
     terminal::DisableLineWrap,
 };
 use input::Input;
-use persist::Session;
+use persist::{Session, SessionName};
 use regex::Cache as RegexCache;
 use render::Render;
 
@@ -105,7 +105,7 @@ impl<W: io::Write> App<W> {
             }
             if change.cursor {
                 let (col, row) = self.pos();
-                self.render.move_to(col, row)?;
+                self.render.move_to(col, row + 2)?;
             }
             if change.content || change.cursor {
                 self.render.flush()?;
@@ -125,12 +125,15 @@ impl<W: io::Write> App<W> {
     fn draw(&mut self) -> io::Result<()> {
         self.render.clear()?;
 
-        self.render.at(Color::Reset, RE_TITLE, 0, 0)?;
-        self.render.at(Color::Reset, HAY_TITLE, 0, LINES_BETWEEN)?;
+        self.render.at(Color::Grey, &self.session.name, 0, 0)?;
+
+        self.render.at(Color::Reset, RE_TITLE, 0, 2)?;
+        self.render
+            .at(Color::Reset, HAY_TITLE, 0, LINES_BETWEEN + 2)?;
 
         self.render
-            .draw_regex_query(&self.session.regex_query.string, LEFT_PADDING, 0)?;
-        self.draw_hay(LEFT_PADDING, LINES_BETWEEN)
+            .draw_regex_query(&self.session.regex_query.string, LEFT_PADDING, 2)?;
+        self.draw_hay(LEFT_PADDING, LINES_BETWEEN + 2)
     }
 
     fn handle_events(&mut self) -> io::Result<Change> {
