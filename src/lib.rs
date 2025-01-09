@@ -6,7 +6,7 @@ use crossterm::{
     terminal::DisableLineWrap,
 };
 use input::Input;
-use persist::{Session, SessionName};
+use persist::Session;
 use regex::Cache as RegexCache;
 use render::Render;
 
@@ -46,7 +46,7 @@ enum Field {
     TestString,
 }
 
-struct Change {
+pub struct Change {
     content: bool,
     cursor: bool,
 }

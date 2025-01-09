@@ -6,7 +6,7 @@ use replay::{App, persist::Session};
 
 fn main() -> anyhow::Result<()> {
     let session = if let Some(name) = env::args().nth(1) {
-        Session::fetch(name).unwrap()
+        Session::fetch(name)?
     } else {
         Session::scratch()
     };

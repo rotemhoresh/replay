@@ -19,7 +19,7 @@ impl Display for SessionName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "-- {} --",
+            "--- {} ---",
             if let Self::Name(name) = self {
                 name
             } else {
@@ -29,10 +29,22 @@ impl Display for SessionName {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("session name contains invalid char: `{0}`")]
     InvalidName(char),
-    InvalidFormat,
+    #[error("session file contains invalid format: {0}")]
+    InvalidFormat(FormatError),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum FormatError {
+    #[error("session file must include exactly 2 lines")]
+    Lines,
+    #[error("the cursor position and content must be separated with a `:`")]
+    Separator,
+    #[error("cursor position must be a string representation of a `usize`")]
+    Cursor,
 }
 
 pub struct Session {
@@ -94,6 +106,8 @@ impl Session {
 
 fn validate_name(name: &str) -> Result<(), Error> {
     if let Some(idx) = name.find(INVALID_CHARS) {
+        // This `unwrap` is okay, because we got that index from the `find`
+        // method, which means it must be in the bounds of the string
         Err(Error::InvalidName(name.chars().nth(idx).unwrap()))
     } else {
         Ok(())
@@ -104,7 +118,7 @@ fn parse_session(path: &Path) -> Result<(Input, Input), Error> {
     if let Ok(s) = fs::read_to_string(path) {
         let lines: Vec<_> = s.split('\n').collect();
         if lines.len() != 2 {
-            Err(Error::InvalidFormat)
+            Err(Error::InvalidFormat(FormatError::Lines))
         } else {
             let regex_query = parse_field(lines[0])?;
             let test_string = parse_field(lines[1])?;
@@ -128,8 +142,12 @@ fn get_path(name: &str) -> PathBuf {
 }
 
 fn parse_field(s: &str) -> Result<Input, Error> {
-    let (cursor, string) = s.split_once(':').ok_or(Error::InvalidFormat)?;
-    let cursor = cursor.parse().map_err(|_| Error::InvalidFormat)?;
+    let (cursor, string) = s
+        .split_once(':')
+        .ok_or(Error::InvalidFormat(FormatError::Separator))?;
+    let cursor = cursor
+        .parse()
+        .map_err(|_| Error::InvalidFormat(FormatError::Cursor))?;
     Ok(Input {
         string: string.to_owned(),
         cursor,
