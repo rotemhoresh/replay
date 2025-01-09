@@ -10,6 +10,7 @@ use persist::Session;
 use regex::Cache as RegexCache;
 use render::Render;
 
+mod highlight;
 mod input;
 pub mod persist;
 mod regex;

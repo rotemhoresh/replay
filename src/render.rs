@@ -8,7 +8,7 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 
-use crate::{Group, LAYER_COLORS};
+use crate::{Group, LAYER_COLORS, highlight::HighlightEventWrapper};
 
 pub struct Render<W: io::Write>(W);
 
@@ -56,8 +56,14 @@ impl<W: io::Write> Render<W> {
     pub fn draw_regex_query(&mut self, s: &str, col: u16, row: u16) -> io::Result<()> {
         self.move_to(col, row)?;
         let mut layer = 0;
-
+        let mut syntax_highlighting = HighlightEventWrapper::new(s.as_bytes()).unwrap_or_default();
         for ch in s.chars() {
+            let syntax_color = syntax_highlighting
+                .by_ref()
+                .take(ch.len_utf8())
+                .last()
+                .unwrap_or(Color::Reset);
+
             let color = match ch {
                 '(' => {
                     layer += 1;
@@ -68,7 +74,7 @@ impl<W: io::Write> Render<W> {
                     layer = layer.saturating_sub(1);
                     color
                 }
-                _ => Color::Reset,
+                _ => syntax_color,
             };
             self.draw(color, ch)?;
         }

@@ -11,4 +11,7 @@ regex = "1.11"
 anyhow = "1.0"
 dirs = "5.0"
 thiserror = "2"
+tree-sitter = "0.24.6"
+tree-sitter-highlight = "0.24.6"
+tree-sitter-regex = "0.24.3"
 # clap = { version = "4.5", features = ["derive"] }
