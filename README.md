@@ -135,7 +135,7 @@ For now, it seems to me that more useful features are more important than suppor
 
 - [X] Basic regex parsing and test string mathches and captures groups highlighting in different color per group layel.
 - [X] Session management - by allowing the user to choose a session (by an arbitrary string, with some limitations) which will be saved, thus when choosing an already existing session, its snapshot will be loaded.
-- [ ] Syntax highlighting for the regular expression.
+- [X] Syntax highlighting for the regular expression.
 - [ ] A widget that explain stuff and present insights on specific parts on demand.
 
 More to come...
